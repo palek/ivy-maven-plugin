@@ -2,14 +2,9 @@ package com.github.remisthoughts;
 
 import java.io.File;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
 import org.apache.ivy.Ivy;
 import org.apache.ivy.core.module.descriptor.Configuration;
@@ -38,90 +33,14 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.eclipse.aether.RepositorySystem;
-import org.eclipse.aether.RepositorySystemSession;
-import org.eclipse.aether.artifact.ArtifactProperties;
 import org.eclipse.aether.impl.ArtifactResolver;
-import org.eclipse.aether.internal.impl.DefaultRepositorySystem;
-import org.eclipse.aether.resolution.ArtifactRequest;
-import org.eclipse.aether.resolution.ArtifactResolutionException;
-import org.eclipse.aether.resolution.ArtifactResult;
 
 /**
  * Goal which adds ivy artifacts as dependencies
  */
 @Mojo(name = "ivy", defaultPhase = LifecyclePhase.INITIALIZE)
 public class IvyMojo extends AbstractMojo {
-	private static final String IVY_GROUP_MARKER = "ivy.";
-	private static final String IVY_CONFIGURATION_MARKER = ".";
 	private static final String CONF = "default";
-
-	private class IvyArtifactResolver implements ArtifactResolver {
-		private final Ivy ivy;
-		private final ArtifactResolver delegate;
-
-		IvyArtifactResolver(Ivy ivy, ArtifactResolver delegate) {
-			this.ivy = ivy;
-			this.delegate = delegate;
-		}
-
-		public ArtifactResult resolveArtifact(RepositorySystemSession session, ArtifactRequest request) throws ArtifactResolutionException {
-			if (request.getArtifact().getGroupId().startsWith(IVY_GROUP_MARKER)) {
-				return convert(request, retrieve(request).get(0));
-			} else {
-				return delegate.resolveArtifact(session, request);
-			}
-		}
-
-		private List<Artifact> retrieve(ArtifactRequest request) throws ArtifactResolutionException {
-			try {
-				String groupId = request.getArtifact().getGroupId().substring(IVY_GROUP_MARKER.length());
-				return new ArrayList<Artifact>(resolve(
-						ivy,
-						groupId.substring(groupId.indexOf(IVY_CONFIGURATION_MARKER) + 1),
-						request.getArtifact().getArtifactId(),
-						request.getArtifact().getVersion(),
-						request.getArtifact().getClassifier(),
-						request.getArtifact().getExtension(),
-						false, // not transitive, as this is for a single request
-						groupId.substring(0, groupId.indexOf(IVY_CONFIGURATION_MARKER))));
-			} catch (MojoExecutionException e) {
-				throw new ArtifactResolutionException(Collections.singletonList(new ArtifactResult(request)));
-			}
-		}
-
-		private ArtifactResult convert(ArtifactRequest request, Artifact mvnArtifact) {
-			Map<String, String> props = new TreeMap<String, String>();
-			props.put(ArtifactProperties.LANGUAGE, "java");
-			props.put(ArtifactProperties.TYPE, mvnArtifact.getType());
-			props.put(ArtifactProperties.CONSTITUTES_BUILD_PATH, "true");
-			props.put(ArtifactProperties.INCLUDES_DEPENDENCIES, "false");
-			return new ArtifactResult(request).
-                    setArtifact(new org.eclipse.aether.artifact.DefaultArtifact(
-							mvnArtifact.getGroupId(),
-							mvnArtifact.getArtifactId(),
-							mvnArtifact.getClassifier(),
-							mvnArtifact.getType(),
-							mvnArtifact.getVersion())
-                            .setFile(mvnArtifact.getFile())
-                            .setProperties(props));
-		}
-
-		public List<ArtifactResult> resolveArtifacts(RepositorySystemSession session, Collection<? extends ArtifactRequest> requests) throws ArtifactResolutionException {
-			List<ArtifactResult> ret = new ArrayList<ArtifactResult>(requests.size());
-			Collection<ArtifactRequest> delegateRequests = new ArrayList<ArtifactRequest>(requests.size());
-			for (ArtifactRequest request : requests) {
-				if (request.getArtifact().getGroupId().startsWith(IVY_GROUP_MARKER)) {
-					for (Artifact mvnArtifact : retrieve(request)) {
-						ret.add(convert(request, mvnArtifact));
-					}
-				} else {
-					delegateRequests.add(request);
-				}
-			}
-			ret.addAll(delegate.resolveArtifacts(session, delegateRequests));
-			return ret;
-		}
-	}
 
 	/**
 	 * the project
@@ -202,7 +121,7 @@ public class IvyMojo extends AbstractMojo {
 		// force a re-calc of the dependencies so maven picks up our new ones
 		project.setDependencyArtifacts(null);
 
-		((DefaultRepositorySystem) repoSystem).setArtifactResolver(new IvyArtifactResolver(ivy, artifactResolver));
+		//((DefaultRepositorySystem) repoSystem).setArtifactResolver(new IvyArtifactResolver(ivy, artifactResolver));
 	}
 
 	private Set<Artifact> resolve(
@@ -257,10 +176,6 @@ public class IvyMojo extends AbstractMojo {
 				String filename = artifactReport.getLocalFile().getName();
 				String thisType = filename.substring(filename.lastIndexOf('.') + 1);
 
-				// if there's more than one configuration possible we can't just pick one at
-				// random (!) as it may be private.
-				String thisConfiguration = "*";
-
 				if(type != null && !thisType.equals(type)) {
 					continue;
 				}
@@ -271,12 +186,12 @@ public class IvyMojo extends AbstractMojo {
 				DefaultArtifactHandler handler = new DefaultArtifactHandler();
 				handler.setAddedToClasspath(true);
 				DefaultArtifact artifact = new DefaultArtifact(
-						IVY_GROUP_MARKER + thisConfiguration + IVY_CONFIGURATION_MARKER + id.getOrganisation(),
+						id.getOrganisation(),
 						id.getName(),
 						VersionRange.createFromVersion(id.getRevision()),
 						scope,
 						thisType,
-						thisClassifier,
+						null,
 						handler,
 						false);
 				artifact.setFile(artifactReport.getLocalFile());
